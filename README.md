@@ -7,6 +7,5 @@ Definitely wouldn't reccommend for normal use; this was just for me to learn :)
 Credits to:
 
     https://beej.us/guide/bgnet/
-    https://beej.us/guide/bgnet/
-
+    https://github.com/lovenry/c-chatroom
 
