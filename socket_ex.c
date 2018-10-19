@@ -20,6 +20,8 @@
 
 #define MAXCLIENTS 30
 int client_socks[MAXCLIENTS];
+int disconnected_clients[MAXCLIENTS];
+int disconnected_clients_index = 0;
 int num_clients = 0;
 
 /* Gets the ip address as a string */
@@ -40,8 +42,15 @@ void send_global_message(const char *message)
 
     for (i = 0; i < num_clients; i++)
     {
-        printf("Sending message: %s", message);
-        send(client_socks[i], message, strlen(message), 0);
+        if (client_socks[i] != -1)
+        {
+            printf("Sending message: %s", message);
+            send(client_socks[i], message, strlen(message), 0);    
+        }
+        else {
+            printf("Skipping disconnected (-1) client!\n");
+        }
+        
     }
 }
 
@@ -62,6 +71,8 @@ void *listen_to_client(void *data)
     char sendmsg[100];
     char username[100];
     char ip[100];
+    
+    int i;
 
     /* Have to copy because if you use just the pointer
      * it will change (from outside the thread) as other
@@ -84,6 +95,26 @@ void *listen_to_client(void *data)
     printf("Exiting thread for user %s: sock %d\n", username, sockfd);
 
     close(sockfd);
+    
+    /* Remove the user from the list of connected users */
+    for (i = 0; i < num_clients; i++)
+    {
+        if (client_socks[i] == sockfd) {
+            client_socks[i] = -1;
+            
+            printf("Found disconnected sockfd: index: %d\n", i);
+            
+            /* Store the index of the disconnected client, so it
+             * can be replaced later */
+            disconnected_clients[disconnected_clients_index++] = i;
+            
+            /* Send a message saying we've disconnected */
+            sprintf(message, "SERVER: %s (%s) has disconnected!", username, ip);
+            send_global_message(message);
+            
+            break;
+        }
+    }
 
     pthread_exit(NULL);
 }
@@ -130,9 +161,24 @@ int main(int argc, char *argv[])
         printf("Server: got connection from %s\n", name);
 
 
-        /* Push the client fd to the list of clients
-         * and increase the total count */
-        client_socks[num_clients++] = sockfd_client;
+        /* If there are no empty spots to fill */
+        if (disconnected_clients_index == 0)
+        {
+            /* Push the client fd to the list of clients
+             * and increase the total count */
+            client_socks[num_clients++] = sockfd_client;
+        }
+        /* Otherwise fill in an empty spot */
+        else {
+            
+            printf("Filling in empty socket at index: %d\n", disconnected_clients[disconnected_clients_index-1]);
+            
+            /* Overwrite the disconnected entry */
+            client_socks[disconnected_clients[disconnected_clients_index-1]] = sockfd_client;
+            
+            /* Decrease the amount of blank entries */
+            disconnected_clients_index--;
+        }
 
         /* Create a thread to listen for messages from this client 
          * the `name` variable in this case is the string of the client's ip */
@@ -141,7 +187,7 @@ int main(int argc, char *argv[])
 
 
         /* Tell everyone another user has connected */
-        sprintf(message, "Anon has joined from ip: %s\n", name);
+        sprintf(message, "SERVER: anon has joined from ip: %s", name);
         send_global_message(message);
     }
 
